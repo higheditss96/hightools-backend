@@ -31,8 +31,14 @@ async def get_follows(username: str):
         async with httpx.AsyncClient() as client:
             response = await client.get(url, headers=headers)
             response.raise_for_status()
-            data = response.json()
-            return data
+
+            # Încearcă să convertești în JSON
+            try:
+                return response.json()
+            except Exception:
+                # Dacă nu e JSON, trimite textul brut (debug)
+                return {"error": "Non-JSON response", "text": response.text[:500]}
+
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Request error: {e}")
     except Exception as e:
