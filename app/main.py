@@ -88,3 +88,49 @@ async def get_user_following(channel_id: str, token: str):
         raise HTTPException(status_code=response.status_code, detail=response.text)
 
     return response.json()
+import os
+import httpx
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+
+# === Config ===
+app = FastAPI(title="HIGHTOOLS Kick API")
+
+# === CORS Middleware ===
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # poți pune domeniul frontend-ului tău (ex: "https://hightools.vercel.app")
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.get("/")
+def root():
+    return {"message": "✅ HIGHTOOLS Kick API active"}
+
+# === Get follows ===
+@app.get("/api/follows")
+async def get_follows(username: str):
+    async with httpx.AsyncClient() as client:
+        # 1️⃣ Luăm informațiile despre canal (ca să obținem ID-ul)
+        channel_url = f"https://kick.com/api/v1/channels/{username}"
+        channel_response = await client.get(channel_url)
+
+        if channel_response.status_code != 200:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        channel_data = channel_response.json()
+        channel_id = channel_data.get("id")
+
+        if not channel_id:
+            raise HTTPException(status_code=404, detail="Channel ID not found")
+
+        # 2️⃣ Luăm lista de follows
+        follows_url = f"https://kick.com/api/v1/channels/{channel_id}/following"
+        follows_response = await client.get(follows_url)
+
+        if follows_response.status_code != 200:
+            raise HTTPException(status_code=follows_response.status_code, detail="Failed to fetch follows")
+
+        return follows_response.json()
