@@ -5,9 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import urlencode
 
 # === Kick App Credentials (from Railway or .env) ===
-KICK_CLIENT_ID = os.getenv("01K98TAETPCYTEA3ZG40VGFTMY")
-KICK_CLIENT_SECRET = os.getenv("1c6b3c57bde5d0ea78d2fd519cb2bc69964b781630b65e19bdacd48791c10ecc")
-KICK_REDIRECT_URI = os.getenv("https://hightools-backend-production.up.railway.app/callback")
+KICK_CLIENT_ID = os.getenv("KICK_CLIENT_ID")
+KICK_CLIENT_SECRET = os.getenv("KICK_CLIENT_SECRET")
+KICK_REDIRECT_URI = os.getenv("KICK_REDIRECT_URI")
 
 KICK_AUTH_URL = "https://kick.com/oauth/authorize"
 KICK_TOKEN_URL = "https://kick.com/oauth/token"
@@ -32,8 +32,8 @@ def root():
 def login():
     """Redirect user to Kick OAuth login"""
     params = {
-        "client_id": 01K98TAETPCYTEA3ZG40VGFTMY,
-        "redirect_uri": https://hightools-backend-production.up.railway.app/callback,
+        "client_id": KICK_CLIENT_ID,
+        "redirect_uri": KICK_REDIRECT_URI,
         "response_type": "code",
         "scope": "user.read channels.read",
     }
@@ -45,10 +45,10 @@ async def callback(code: str):
     """Exchange the OAuth code for an access token"""
     async with httpx.AsyncClient() as client:
         payload = {
-            "client_id": 01K98TAETPCYTEA3ZG40VGFTMY,
-            "client_secret": 1c6b3c57bde5d0ea78d2fd519cb2bc69964b781630b65e19bdacd48791c10ecc,
+            "client_id": KICK_CLIENT_ID,
+            "client_secret": KICK_CLIENT_SECRET,
             "grant_type": "authorization_code",
-            "redirect_uri": https://hightools-backend-production.up.railway.app/callback,
+            "redirect_uri": KICK_REDIRECT_URI,
             "code": code,
         }
         response = await client.post(KICK_TOKEN_URL, data=payload)
