@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from urllib.parse import urlencode
 
-# === Kick App Credentials (set in Railway Variables or .env) ===
+# === Kick App Credentials (from Railway or .env) ===
 KICK_CLIENT_ID = os.getenv("01K98TAETPCYTEA3ZG40VGFTMY")
 KICK_CLIENT_SECRET = os.getenv("1c6b3c57bde5d0ea78d2fd519cb2bc69964b781630b65e19bdacd48791c10ecc")
 KICK_REDIRECT_URI = os.getenv("https://hightools-backend-production.up.railway.app/callback")
@@ -18,7 +18,7 @@ app = FastAPI(title="HIGHTOOLS Official Kick API")
 # === CORS Middleware ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # înlocuiește cu frontend-ul tău când e gata
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,7 +59,7 @@ async def callback(code: str):
     data = response.json()
     return {
         "access_token": data.get("access_token"),
-        "expires_in": data.get("expires_in")
+        "expires_in": data.get("expires_in"),
     }
 
 @app.get("/me")
