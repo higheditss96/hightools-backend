@@ -1,220 +1,85 @@
-import os
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from urllib.parse import urlencode
 
-app = FastAPI(title="HIGHTOOLS Kick Follows")
+app = FastAPI(title="HIGHTOOLS Kick Public API v2")
 
-# === CONFIG ===
-KICK_CLIENT_ID = os.getenv("KICK_CLIENT_ID")
-KICK_CLIENT_SECRET = os.getenv("KICK_CLIENT_SECRET")
-KICK_REDIRECT_URI = os.getenv(
-    "KICK_REDIRECT_URI",
-    "https://hightools-backend-production.up.railway.app/callback"
-)
-
-KICK_AUTH_URL = "https://kick.com/oauth/authorize"
-KICK_TOKEN_URL = "https://kick.com/oauth/token"
-KICK_API_URL = "https://api.kick.com/v1"
+KICK_API_BASE = "https://kick.com/api/v2"
 
 # === CORS ===
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # poți restricționa ulterior doar la domeniul frontendului tău
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# === ROOT ===
 @app.get("/")
 def root():
-    return {"message": "✅ HIGHTOOLS API Active"}
+    return {"message": "✅ HIGHTOOLS Kick API v2 Active"}
 
 
-# === 1️⃣ LOGIN REDIRECT ===
-@app.get("/login")
-def login():
-    params = {
-        "client_id": KICK_CLIENT_ID,
-        "redirect_uri": KICK_REDIRECT_URI,
-        "response_type": "code",
-        "scope": "user.read follows.read channels.read",
-    }
-    return {"auth_url": f"{KICK_AUTH_URL}?{urlencode(params)}"}
-
-
-# === 2️⃣ CALLBACK TOKEN ===
-@app.get("/callback")
-async def callback(code: str):
-    async with httpx.AsyncClient() as client:
-        payload = {
-            "client_id": KICK_CLIENT_ID,
-            "client_secret": KICK_CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "redirect_uri": KICK_REDIRECT_URI,
-            "code": code,
-        }
-        res = await client.post(KICK_TOKEN_URL, data=payload)
-
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-
-        return res.json()
-
-
-# === 3️⃣ GET AUTH USER INFO ===
-@app.get("/me")
-async def get_me(token: str):
-    headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
-        res = await client.get(f"{KICK_API_URL}/users/@me", headers=headers)
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-        return res.json()
-
-
-# === 4️⃣ GET USER FOLLOWS ===
-@app.get("/follows")
-async def get_user_follows(user_id: str, token: str):
-    headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
-        res = await client.get(f"{KICK_API_URL}/users/{user_id}/following", headers=headers)
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-        return res.json()
-
-
-# === 5️⃣ SEARCH USER BY USERNAME ===
+# === 1️⃣ GET USER INFO ===
 @app.get("/user")
-async def search_user(username: str, token: str):
+async def get_user(username: str):
     """
-    Returnează detalii despre un utilizator Kick după username.
+    Obține date despre un user Kick (folosind /api/v2/channels/{username})
     """
-    headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient() as client:
-        res = await client.get(f"{KICK_API_URL}/users/{username}", headers=headers)
+        res = await client.get(f"{KICK_API_BASE}/channels/{username.lower()}")
         if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
+            raise HTTPException(status_code=404, detail="User not found")
         return res.json()
 
 
-# === 6️⃣ COMPARE FOLLOWS ===
-@app.get("/compare")
-async def compare_follows(user1_id: str, user2_id: str, token: str):
+# === 2️⃣ GET USER FOLLOWS ===
+@app.get("/follows")
+async def get_follows(username: str):
     """
-    Compară lista de follows dintre două conturi și returnează mutuals.
+    Returnează lista de follows pentru un user public Kick.
     """
-    headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient() as client:
-        res1 = await client.get(f"{KICK_API_URL}/users/{user1_id}/following", headers=headers)
-        res2 = await client.get(f"{KICK_API_URL}/users/{user2_id}/following", headers=headers)
+        res_user = await client.get(f"{KICK_API_BASE}/channels/{username.lower()}")
+        if res_user.status_code != 200:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user = res_user.json()
+        user_id = user["user_id"]
+
+        res_follows = await client.get(f"{KICK_API_BASE}/users/{user_id}/following")
+        if res_follows.status_code != 200:
+            raise HTTPException(status_code=res_follows.status_code, detail=res_follows.text)
+
+        return {"user": user, "follows": res_follows.json()}
+
+
+# === 3️⃣ COMPARE FOLLOWS ===
+@app.get("/compare")
+async def compare_follows(user1: str, user2: str):
+    async with httpx.AsyncClient() as client:
+        res1 = await client.get(f"{KICK_API_BASE}/channels/{user1.lower()}")
+        res2 = await client.get(f"{KICK_API_BASE}/channels/{user2.lower()}")
 
         if res1.status_code != 200 or res2.status_code != 200:
-            raise HTTPException(status_code=400, detail="Unable to fetch follows for comparison")
+            raise HTTPException(status_code=404, detail="One or both users not found")
 
-        follows1 = res1.json()
-        follows2 = res2.json()
+        u1 = res1.json()
+        u2 = res2.json()
 
-        # comparăm după username (case-insensitive)
+        res_f1 = await client.get(f"{KICK_API_BASE}/users/{u1['user_id']}/following")
+        res_f2 = await client.get(f"{KICK_API_BASE}/users/{u2['user_id']}/following")
+
+        if res_f1.status_code != 200 or res_f2.status_code != 200:
+            raise HTTPException(status_code=400, detail="Unable to fetch follows")
+
+        f1 = res_f1.json()
+        f2 = res_f2.json()
+
         mutuals = [
-            ch for ch in follows1
-            if any(ch["username"].lower() == f2["username"].lower() for f2 in follows2)
+            ch for ch in f1
+            if any(ch["username"].lower() == c2["username"].lower() for c2 in f2)
         ]
 
-        return {"mutuals": mutuals, "count": len(mutuals)}
-
-
-# === 1️⃣ LOGIN REDIRECT ===
-@app.get("/login")
-def login():
-    params = {
-        "client_id": KICK_CLIENT_ID,
-        "redirect_uri": KICK_REDIRECT_URI,
-        "response_type": "code",
-        "scope": "user.read follows.read channels.read",
-    }
-    return {"auth_url": f"{KICK_AUTH_URL}?{urlencode(params)}"}
-
-
-# === 2️⃣ CALLBACK TOKEN ===
-@app.get("/callback")
-async def callback(code: str):
-    async with httpx.AsyncClient() as client:
-        payload = {
-            "client_id": KICK_CLIENT_ID,
-            "client_secret": KICK_CLIENT_SECRET,
-            "grant_type": "authorization_code",
-            "redirect_uri": KICK_REDIRECT_URI,
-            "code": code,
-        }
-        res = await client.post(KICK_TOKEN_URL, data=payload)
-
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-
-        return res.json()
-
-
-# === 3️⃣ GET AUTH USER INFO ===
-@app.get("/me")
-async def get_me(token: str):
-    headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
-        res = await client.get(f"{KICK_API_URL}/users/@me", headers=headers)
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-        return res.json()
-
-
-# === 4️⃣ GET USER FOLLOWS ===
-@app.get("/follows")
-async def get_user_follows(user_id: str, token: str):
-    headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
-        res = await client.get(f"{KICK_API_URL}/users/{user_id}/following", headers=headers)
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-        return res.json()
-
-
-# === 5️⃣ SEARCH USER BY USERNAME ===
-@app.get("/user")
-async def search_user(username: str, token: str):
-    """
-    Returnează detalii despre un utilizator Kick după username.
-    """
-    headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
-        res = await client.get(f"{KICK_API_URL}/users/{username}", headers=headers)
-        if res.status_code != 200:
-            raise HTTPException(status_code=res.status_code, detail=res.text)
-        return res.json()
-
-
-# === 6️⃣ COMPARE FOLLOWS ===
-@app.get("/compare")
-async def compare_follows(user1_id: str, user2_id: str, token: str):
-    """
-    Compară lista de follows dintre două conturi și returnează mutuals.
-    """
-    headers = {"Authorization": f"Bearer {token}"}
-    async with httpx.AsyncClient() as client:
-        res1 = await client.get(f"{KICK_API_URL}/users/{user1_id}/following", headers=headers)
-        res2 = await client.get(f"{KICK_API_URL}/users/{user2_id}/following", headers=headers)
-
-        if res1.status_code != 200 or res2.status_code != 200:
-            raise HTTPException(status_code=400, detail="Unable to fetch follows for comparison")
-
-        follows1 = res1.json()
-        follows2 = res2.json()
-
-        # comparăm după username (case-insensitive)
-        mutuals = [
-            ch for ch in follows1
-            if any(ch["username"].lower() == f2["username"].lower() for f2 in follows2)
-        ]
-
-        return {"mutuals": mutuals, "count": len(mutuals)}
+        return {"user1": u1, "user2": u2, "mutuals": mutuals, "count": len(mutuals)}
