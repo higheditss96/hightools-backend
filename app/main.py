@@ -15,7 +15,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    return {"message": "✅ HIGHTOOLS Kick API active"}
+    return {"message": "✅ HIGHTOOLS Kick API active and ready"}
 
 @app.get("/api/follows")
 async def get_follows(username: str):
@@ -26,39 +26,45 @@ async def get_follows(username: str):
         "Accept": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        # 1️⃣ Căutăm canalul
-        channel_url = f"https://kick.com/api/v1/channels/{username}"
-        response = await client.get(channel_url, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # 1️⃣ Luăm informațiile canalului
+            channel_url = f"https://kick.com/api/v1/channels/{username}"
+            channel_response = await client.get(channel_url, headers=headers)
 
-        if response.status_code != 200:
-            # Dacă Kick blochează cererea, încearcă prin proxy
-            proxy_url = f"https://api.allorigins.win/raw?url={channel_url}"
-            proxy_response = await client.get(proxy_url, headers=headers)
+            if channel_response.status_code != 200:
+                # Dacă Kick blochează cererea, încearcă prin proxy
+                proxy_url = f"https://api.allorigins.win/raw?url={channel_url}"
+                channel_response = await client.get(proxy_url, headers=headers)
 
-            if proxy_response.status_code != 200:
-                raise HTTPException(status_code=404, detail="User not found")
+            # Verificăm dacă răspunsul e JSON valid
+            try:
+                channel_data = channel_response.json()
+            except Exception:
+                raise HTTPException(status_code=500, detail="Invalid Kick API response (non-JSON)")
 
-            data = proxy_response.json()
-        else:
-            data = response.json()
+            channel_id = channel_data.get("id")
+            if not channel_id:
+                raise HTTPException(status_code=404, detail="Channel not found or missing ID")
 
-        channel_id = data.get("id")
-        if not channel_id:
-            raise HTTPException(status_code=404, detail="Channel ID not found")
+            # 2️⃣ Luăm lista de follows
+            follows_url = f"https://kick.com/api/v1/channels/{channel_id}/following"
+            follows_response = await client.get(follows_url, headers=headers)
 
-        # 2️⃣ Luăm lista de follows
-        follows_url = f"https://kick.com/api/v1/channels/{channel_id}/following"
-        follows_response = await client.get(follows_url, headers=headers)
+            if follows_response.status_code != 200:
+                # Încearcă fallback prin proxy
+                proxy_follows = f"https://api.allorigins.win/raw?url={follows_url}"
+                follows_response = await client.get(proxy_follows, headers=headers)
 
-        if follows_response.status_code != 200:
-            # Fallback la proxy dacă e blocat direct
-            proxy_follows = f"https://api.allorigins.win/raw?url={follows_url}"
-            proxy_resp = await client.get(proxy_follows, headers=headers)
+            try:
+                follows_data = follows_response.json()
+            except Exception:
+                raise HTTPException(status_code=500, detail="Invalid follows response (non-JSON)")
 
-            if proxy_resp.status_code != 200:
-                raise HTTPException(status_code=proxy_resp.status_code, detail="Failed to fetch follows")
+            return follows_data
 
-            return proxy_resp.json()
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Kick API timeout (server too slow)")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {e}")
 
-        return follows_response.json()
