@@ -19,11 +19,7 @@ def root():
 
 @app.get("/api/follows")
 async def get_follows(username: str):
-    """
-    Returnează lista de persoane urmărite de un user Kick (neautentificat)
-    """
     url = f"https://kick.com/api/v2/channels/{username}/following"
-
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -34,9 +30,10 @@ async def get_follows(username: str):
         "Referer": f"https://kick.com/{username}",
     }
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+        text = response.text[:400]
+        return {"status_code": response.status_code, "preview": text}
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, detail="Kick API error")
             
